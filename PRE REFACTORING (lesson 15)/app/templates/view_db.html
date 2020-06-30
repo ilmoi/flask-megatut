@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block app_content %}
+<h1>Hey, {{ current_user.username }}!</h1>
+<p><img src="{{ current_user.avatar(128) }}"></p>
+<p>Below are your fields from the database (yikes). Feel free to edit any one of them.</p>
+<table>
+    <th>Your data:</th>
+    {% for ka in keyed_attrs %}
+    <tr>
+        <td>{{ ka }}</td>
+        <td><a href="{{ url_for('edit', attr_key=ka[0]) }}">Edit</a></td>
+    </tr>
+    {% endfor %}
+    {% endblock %}
+</table>
