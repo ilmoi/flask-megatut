@@ -1,4 +1,5 @@
 import base64
+import json
 import logging
 import os
 import traceback
@@ -126,6 +127,37 @@ class User(PaginatedAPIMixin, SearchableMixin, UserMixin, db.Model):
     # adding the token attribute. Because we'll have to search the db by it, making it unique and indexed
     token = db.Column(db.String(32), index=True, unique=True)
     token_expiration = db.Column(db.DateTime)
+
+    #---------------------------------------------------------------------------
+    # message stuff
+
+    messages_sent = db.relationship('Message',
+                                    foreign_keys='Message.sender_id',
+                                    backref='author', lazy='dynamic')
+    messages_received = db.relationship('Message',
+                                        foreign_keys='Message.recipient_id',
+                                        backref='recipient', lazy='dynamic')
+    last_message_read_time = db.Column(db.DateTime)
+
+    # counts number of new messages
+    def new_messages(self):
+        last_read_time = self.last_message_read_time or datetime(1900, 1, 1)
+        return Message.query.filter_by(recipient=self).filter(
+            Message.timestamp > last_read_time).count()
+
+    #---------------------------------------------------------------------------
+    # notifications
+
+    notifications = db.relationship('Notification', backref='user', lazy='dynamic')
+
+    def add_notification(self, name, data):
+        # if a notification with a similar name already exists - we delete it first
+        self.notifications.filter_by(name=name).delete()
+        n = Notification(name=name, payload_json=json.dumps(data), user=self)
+        db.session.add(n)
+        return n
+
+    # ---------------------------------------------------------------------------
 
     def __repr__(self):
         return '<User {}>'.format(self.username)
@@ -329,3 +361,25 @@ class Task(db.Model):
         # assumption 1 - if job id not in the queue this means the job already finished and more than 500s passed and so we're returning 100
         # assumption 2 - if job exists but there is no meta info, this means it's still scheduled to run
         return job.meta.get('progress', 0) if job is not None else 100
+
+
+class Message(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    recipient_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    body = db.Column(db.String(140))
+    timestamp = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+
+    def __repr__(self):
+        return '<Message {}>'.format(self.body)
+
+
+class Notification(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    timestamp = db.Column(db.Float, index=True, default=time)
+    payload_json = db.Column(db.Text)
+
+    def get_data(self):
+        return json.loads(str(self.payload_json))
